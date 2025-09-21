@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,58 +14,31 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  
+  Loader2
 } from 'lucide-react';
 import CustomerLayout from '@/components/layouts/CustomerLayout';
-
+import { useAuth } from '@/lib/auth-context';
+import { getUserBookings } from '@/lib/database';
 import Link from "next/link";
-const mockBookings = [
-  {
-    id: 1,
-    artist: {
-      name: "Alex Rivera",
-      image: "https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=400",
-      location: "New York, NY"
-    },
-    date: "2024-01-15",
-    time: "2:00 PM",
-    duration: "3 hours",
-    status: "confirmed",
-    description: "Portrait tattoo of my dog",
-    estimatedCost: 525,
-    bookingDate: "2024-01-10"
-  },
-  {
-    id: 2,
-    artist: {
-      name: "Maya Chen",
-      image: "https://images.pexels.com/photos/762020/pexels-photo-762020.jpeg?auto=compress&cs=tinysrgb&w=400",
-      location: "Los Angeles, CA"
-    },
-    date: "2024-01-08",
-    time: "11:00 AM",
-    duration: "2 hours",
-    status: "pending",
-    description: "Traditional rose tattoo on forearm",
-    estimatedCost: 360,
-    bookingDate: "2024-01-05"
-  },
-  {
-    id: 3,
-    artist: {
-      name: "Jordan Blake",
-      image: "https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=400",
-      location: "Chicago, IL"
-    },
-    date: "2023-12-20",
-    time: "1:00 PM",
-    duration: "4 hours",
-    status: "completed",
-    description: "Neo-traditional sleeve session 2",
-    estimatedCost: 800,
-    bookingDate: "2023-12-15"
-  }
-];
+
+// Interface for booking data
+interface Booking {
+  id: string;
+  customer_id: string;
+  artist_id: string;
+  appointment_date: string;
+  duration_hours: number;
+  status: string;
+  description: string;
+  total_amount: number;
+  created_at: string;
+  artists: {
+    user_profiles: {
+      full_name: string;
+      avatar_url: string;
+    };
+  };
+}
 
 const getStatusIcon = (status: string) => {
   switch (status) {
@@ -98,106 +71,160 @@ const getStatusColor = (status: string) => {
 };
 
 export default function CustomerBookings() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('upcoming');
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const upcomingBookings = mockBookings.filter(booking => 
+  // Fetch user bookings
+  useEffect(() => {
+    const fetchBookings = async () => {
+      if (!user) return;
+      
+      try {
+        setLoading(true);
+        const userBookings = await getUserBookings(user.uid);
+        setBookings(userBookings);
+      } catch (err) {
+        console.error('Error fetching bookings:', err);
+        setError('Failed to load bookings');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBookings();
+  }, [user]);
+
+  // Filter bookings
+  const upcomingBookings = bookings.filter(booking => 
     booking.status === 'confirmed' || booking.status === 'pending'
   );
   
-  const pastBookings = mockBookings.filter(booking => 
+  const pastBookings = bookings.filter(booking => 
     booking.status === 'completed' || booking.status === 'cancelled'
   );
 
-  const BookingCard = ({ booking }: { booking: any }) => (
-    <Card className="hover:shadow-md transition-shadow">
-      <CardContent className="p-6">
-        <div className="flex items-start space-x-4">
-          <img
-            src={booking.artist.image}
-            alt={booking.artist.name}
-            className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
-          />
-          <div className="flex-1">
-            <div className="flex items-start justify-between mb-2">
-              <div>
-                <h3 className="font-semibold text-lg">{booking.artist.name}</h3>
-                <div className="flex items-center text-sm text-gray-600 mt-1">
-                  <MapPin className="h-4 w-4 mr-1" />
-                  {booking.artist.location}
+  const BookingCard = ({ booking }: { booking: Booking }) => {
+    const appointmentDate = new Date(booking.appointment_date);
+    const bookingDate = new Date(booking.created_at);
+
+    return (
+      <Card className="hover:shadow-md transition-shadow">
+        <CardContent className="p-6">
+          <div className="flex items-start space-x-4">
+            <img
+              src={booking.artists?.user_profiles?.avatar_url || '/placeholder-artist.jpg'}
+              alt={booking.artists?.user_profiles?.full_name || 'Artist'}
+              className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+            />
+            <div className="flex-1">
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <h3 className="font-semibold text-lg">
+                    {booking.artists?.user_profiles?.full_name || 'Unknown Artist'}
+                  </h3>
+                  <div className="flex items-center text-sm text-gray-600 mt-1">
+                    <MapPin className="h-4 w-4 mr-1" />
+                    Available Online
+                  </div>
+                </div>
+                <Badge className={`${getStatusColor(booking.status)} border`}>
+                  <div className="flex items-center space-x-1">
+                    {getStatusIcon(booking.status)}
+                    <span className="capitalize">{booking.status}</span>
+                  </div>
+                </Badge>
+              </div>
+              
+              <p className="text-gray-700 mb-3">{booking.description || 'No description provided'}</p>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="flex items-center">
+                  <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                  <span>{appointmentDate.toLocaleDateString()}</span>
+                </div>
+                <div className="flex items-center">
+                  <Clock className="h-4 w-4 mr-2 text-gray-400" />
+                  <span>{appointmentDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <div className="flex items-center">
+                  <Clock className="h-4 w-4 mr-2 text-gray-400" />
+                  <span>{booking.duration_hours}h</span>
+                </div>
+                <div className="font-medium text-purple-600">
+                  ${booking.total_amount}
                 </div>
               </div>
-              <Badge className={`${getStatusColor(booking.status)} border`}>
-                <div className="flex items-center space-x-1">
-                  {getStatusIcon(booking.status)}
-                  <span className="capitalize">{booking.status}</span>
-                </div>
-              </Badge>
-            </div>
-            
-            <p className="text-gray-700 mb-3">{booking.description}</p>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div className="flex items-center">
-                <Calendar className="h-4 w-4 mr-2 text-gray-400" />
-                <span>{new Date(booking.date).toLocaleDateString()}</span>
-              </div>
-              <div className="flex items-center">
-                <Clock className="h-4 w-4 mr-2 text-gray-400" />
-                <span>{booking.time}</span>
-              </div>
-              <div className="flex items-center">
-                <Clock className="h-4 w-4 mr-2 text-gray-400" />
-                <span>{booking.duration}</span>
-              </div>
-              <div className="font-medium text-purple-600">
-                ${booking.estimatedCost}
-              </div>
-            </div>
-            
-            <div className="flex flex-wrap gap-2 mt-4">
-              {booking.status === 'pending' && (
-                <>
-                  <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
-                    Cancel Request
-                  </Button>
-                  <Button size="sm" variant="outline">
-                    <MessageSquare className="h-4 w-4 mr-1" />
-                    Message Artist
-                  </Button>
-                </>
-              )}
               
-              {booking.status === 'confirmed' && (
-                <>
-                  <Button size="sm" variant="outline">
-                    <Phone className="h-4 w-4 mr-1" />
-                    Contact Artist
-                  </Button>
-                  <Button size="sm" variant="outline">
-                    View Details
-                  </Button>
-                  <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
-                    Reschedule
-                  </Button>
-                </>
-              )}
-              
-              {booking.status === 'completed' && (
-                <>
-                  <Button size="sm" variant="outline">
-                    Leave Review
-                  </Button>
-                  <Button size="sm" variant="outline">
-                    Book Again
-                  </Button>
-                </>
-              )}
+              <div className="flex flex-wrap gap-2 mt-4">
+                {booking.status === 'pending' && (
+                  <>
+                    <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
+                      Cancel Request
+                    </Button>
+                    <Button size="sm" variant="outline">
+                      <MessageSquare className="h-4 w-4 mr-1" />
+                      Message Artist
+                    </Button>
+                  </>
+                )}
+                
+                {booking.status === 'confirmed' && (
+                  <>
+                    <Button size="sm" variant="outline">
+                      <Phone className="h-4 w-4 mr-1" />
+                      Contact Artist
+                    </Button>
+                    <Button size="sm" variant="outline">
+                      View Details
+                    </Button>
+                    <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
+                      Reschedule
+                    </Button>
+                  </>
+                )}
+                
+                {booking.status === 'completed' && (
+                  <>
+                    <Button size="sm" variant="outline">
+                      Leave Review
+                    </Button>
+                    <Button size="sm" variant="outline">
+                      Book Again
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  if (loading) {
+    return (
+      <CustomerLayout>
+        <div className="flex justify-center items-center min-h-96">
+          <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
         </div>
-      </CardContent>
-    </Card>
-  );
+      </CustomerLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <CustomerLayout>
+        <div className="text-center py-12">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Bookings</h3>
+          <p className="text-gray-600">{error}</p>
+        </div>
+      </CustomerLayout>
+    );
+  }
 
   return (
     <CustomerLayout>
@@ -209,11 +236,11 @@ export default function CustomerBookings() {
             <p className="text-gray-600">Manage your tattoo appointments</p>
           </div>
           
-         <Link href={`/customer/browse`} >
-              <Button className="w-full bg-purple-600 hover:bg-purple-700">
-                Book new session
-              </Button>
-            </Link>
+          <Link href="/customer/browse">
+            <Button className="bg-purple-600 hover:bg-purple-700">
+              Book New Session
+            </Button>
+          </Link>
         </div>
 
         {/* Stats Cards */}
@@ -246,7 +273,7 @@ export default function CustomerBookings() {
                 <AlertCircle className="h-8 w-8 text-yellow-600" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Pending</p>
-                  <p className="text-2xl font-bold">{mockBookings.filter(b => b.status === 'pending').length}</p>
+                  <p className="text-2xl font-bold">{bookings.filter(b => b.status === 'pending').length}</p>
                 </div>
               </div>
             </CardContent>
@@ -271,9 +298,11 @@ export default function CustomerBookings() {
                   <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No upcoming bookings</h3>
                   <p className="text-gray-600 mb-4">Ready to get your next tattoo? Browse our talented artists.</p>
-                  <Button className="bg-purple-600 hover:bg-purple-700">
-                    Browse Artists
-                  </Button>
+                  <Link href="/customer/browse">
+                    <Button className="bg-purple-600 hover:bg-purple-700">
+                      Browse Artists
+                    </Button>
+                  </Link>
                 </CardContent>
               </Card>
             )}

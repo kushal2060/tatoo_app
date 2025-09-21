@@ -657,3 +657,61 @@ export const getCurrentArtist = async (retries = 3, delay = 1500, userId?: strin
     }
   }
 };
+// Add these functions if not already present
+export const getAllUserProfiles = async () => {
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching user profiles:', error);
+    throw error;
+  }
+
+  return data || [];
+};
+
+export const getAllBookings = async () => {
+  const { data, error } = await supabase
+    .from('bookings')
+    .select(`
+      *,
+      artists (
+        user_profiles (
+          full_name
+        )
+      )
+    `)
+    .order('appointment_date', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching bookings:', error);
+    throw error;
+  }
+
+  return data || [];
+};
+// Add this function if it doesn't exist
+export const getUserBookings = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('bookings')
+    .select(`
+      *,
+      artists (
+        user_profiles (
+          full_name,
+          avatar_url
+        )
+      )
+    `)
+    .eq('customer_id', userId)
+    .order('appointment_date', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching user bookings:', error);
+    throw error;
+  }
+
+  return data || [];
+};
