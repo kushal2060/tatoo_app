@@ -1,8 +1,9 @@
 'use client';
 
 import { Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -16,10 +17,13 @@ import Link from 'next/link';
 // Create a separate component that uses useSearchParams
 function AuthContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const { user } = useAuth();
   const initialRole = searchParams.get('role') as 'customer' | 'artist' || 'customer';
   
   const [activeTab, setActiveTab] = useState('login');
   const [role, setRole] = useState<'customer' | 'artist'>(initialRole);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   
   const { 
     signup, 
@@ -28,6 +32,20 @@ function AuthContent() {
     loading, 
     error 
   } = useAuthOperations();
+
+  // Enhanced redirect logic for production
+  useEffect(() => {
+    if (user && !loading && !isRedirecting) {
+      console.log('User authenticated, starting redirect...');
+      setIsRedirecting(true);
+      
+      // Use setTimeout to ensure state is fully updated
+      setTimeout(() => {
+        // Use window.location for reliable production redirect
+        window.location.href = window.location.origin;
+      }, 100);
+    }
+  }, [user, loading, isRedirecting]);
 
   const [formData, setFormData] = useState({
     email: '',
@@ -53,14 +71,23 @@ function AuthContent() {
           return;
         }
         
-        await signup({
+        const result = await signup({
           email: formData.email,
           password: formData.password,
           fullName: formData.fullName,
           role
         });
+        
+        if (result) {
+          console.log('Signup successful');
+          // Let useEffect handle the redirect
+        }
       } else {
-        await login({ email: formData.email, password: formData.password });
+        const result = await login({ email: formData.email, password: formData.password });
+        if (result) {
+          console.log('Login successful');
+          // Let useEffect handle the redirect
+        }
       }
     } catch (err) {
       console.error('Auth error:', err);
@@ -69,11 +96,27 @@ function AuthContent() {
 
   const handleGoogleAuth = async () => {
     try {
-      await loginWithGoogle(role);
+      const result = await loginWithGoogle(role);
+      if (result) {
+        console.log('Google auth successful');
+        // Let useEffect handle the redirect
+      }
     } catch (err) {
       console.error('Google auth error:', err);
     }
   };
+
+  // Show redirecting state
+  if (isRedirecting) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-orange-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-purple-600" />
+          <p className="text-gray-600">Redirecting to homepage...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-orange-50 flex items-center justify-center p-4">
